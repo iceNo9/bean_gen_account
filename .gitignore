@@ -3,6 +3,9 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+*.bean
+*.xlsx
+
 # C extensions
 *.so
 
