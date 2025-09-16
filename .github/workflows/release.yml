@@ -1,43 +1,77 @@
-name: Release (Windows + Poetry)
+name: Tag Release Workflow
 
 on:
   push:
     tags:
-      - "v*"   # 例如 v0.1.0 触发
+      - 'v*.*.*'
 
 jobs:
-  build:
+  build-and-release:
     runs-on: windows-latest
 
     steps:
-      # 1. 拉取代码
-      - uses: actions/checkout@v3
-
-      # 2. 安装 Python
-      - uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          python-version: "3.12"
+          fetch-depth: 0  # 获取所有历史记录，以便正确识别标签
 
-      # 3. 安装 Poetry
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
       - name: Install Poetry
         run: pip install poetry
 
-      # 4. 安装依赖
       - name: Install dependencies
         run: poetry install --no-root
 
-      # 5. 打包为 exe（用 Poetry 调用 Nuitka）
-      - name: Build with Nuitka
-        run: |
-          poetry run python -m nuitka --standalone --follow-imports --output-dir=dist main.py
-
-      # 6. 压缩打包（把 exe 文件夹打成 zip）
-      - name: Archive
-        run: |
-          powershell Compress-Archive -Path dist\main.dist -DestinationPath dist\bean-gen-account.zip -Force
-
-      # 7. 上传到 Release
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Build project with Nuitka
+        uses: Nuitka/Nuitka-Action@main
         with:
-          files: dist/bean-gen-account.zip
+          script-name: "main.py"
+          mode: "standalone"
+          output-dir: "dist"
+          enable-plugins: "tk-inter"
+          python-flag: "-O"
+
+      - name: Get tag name
+        id: get_tag
+        run: |
+          # 使用GitHub提供的环境变量获取标签名
+          $tag = "${env:GITHUB_REF_NAME}"
+          echo "TAG_NAME=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append
+          echo "当前标签: $tag"
+
+      - name: Prepare release assets
+        run: |
+          # 创建发布目录
+          $releaseDir = "release/onemore_$env:TAG_NAME"
+          New-Item -ItemType Directory -Force -Path $releaseDir
+          
+          # 复制编译后的文件
+          Copy-Item -Path "dist/main.dist/*" -Destination $releaseDir -Recurse -Force
+                    
+          # 创建压缩包
+          Compress-Archive -Path $releaseDir -DestinationPath "$releaseDir.zip"
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}  # 使用默认的GITHUB_TOKEN
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          release_name: Release ${{ env.TAG_NAME }}
+          draft: false
+          prerelease: false
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: release/onemore_${{ env.TAG_NAME }}.zip
+          asset_name: onemore_${{ env.TAG_NAME }}.zip
+          asset_content_type: application/zip
