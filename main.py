@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from datetime import datetime
 
+VER = "v0.1.0"
+
 def generate_beancount_open_records(xlsx_path: str):
     xlsx_path = Path(xlsx_path)
     if not xlsx_path.exists():
